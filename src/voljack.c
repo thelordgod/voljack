@@ -49,7 +49,8 @@ typedef struct {
 	// control state
 	volatile sig_atomic_t db_is_neg_inf;
 	volatile float current_db;
-	volatile float current_gain;
+	volatile float target_gain;
+	float current_gain;
 
 	float min_db;
 	float max_db;
@@ -141,14 +142,19 @@ static void apply_db(app_t *app, int is_neg_inf, float db) {
 	if (is_neg_inf) {
 		app->db_is_neg_inf = 1;
 		app->current_db = -INFINITY;
-		app->current_gain = 0.0f;
+		app->target_gain = 0.0f;
 		return;
 	}
 
 	db = clampf_local(db, app->min_db, app->max_db);
 	app->db_is_neg_inf = 0;
 	app->current_db = db;
-	app->current_gain = db_to_gain(0, db);
+	app->target_gain = db_to_gain(0, db);
+}
+
+static void set_initial_db(app_t *app, int is_neg_inf, float db) {
+	apply_db(app, is_neg_inf, db);
+	app->current_gain = app->target_gain;
 }
 
 static void config_defaults(config_t *cfg) {
@@ -280,7 +286,16 @@ static int prompt_first_run_config(config_t *cfg) {
 
 static int process_cb(jack_nframes_t nframes, void *arg) {
 	app_t *app = (app_t *)arg;
+
 	float gain = app->current_gain;
+	float target = app->target_gain;
+	float step = 0.0f;
+
+	if (nframes > 1) {
+		step = (target - gain) / (float)(nframes - 1);
+	} else if (nframes == 1) {
+		step = target - gain;
+	}
 
 	for (int ch = 0; ch < app->channels; ch++) {
 		jack_default_audio_sample_t *in =
@@ -288,10 +303,14 @@ static int process_cb(jack_nframes_t nframes, void *arg) {
 		jack_default_audio_sample_t *out =
 			(jack_default_audio_sample_t *)jack_port_get_buffer(app->out_ports[ch], nframes);
 
+		float g = gain;
 		for (jack_nframes_t i = 0; i < nframes; i++) {
-			out[i] = in[i] * gain;
+			out[i] = in[i] * g;
+			g += step;
 		}
 	}
+
+	app->current_gain = target;
 	return 0;
 }
 
@@ -593,8 +612,11 @@ int main(int argc, char **argv) {
 	app.server_fd = -1;
 	snprintf(app.socket_path, sizeof(app.socket_path), "%s", cfg.socket_path);
 
-	if (isinf(cfg.start_db) && cfg.start_db < 0) apply_db(&app, 1, -INFINITY);
-	else apply_db(&app, 0, cfg.start_db);
+	if (isinf(cfg.start_db) && cfg.start_db < 0) {
+		set_initial_db(&app, 1, -INFINITY);
+	} else {
+		set_initial_db(&app, 0, cfg.start_db);
+	}
 
 	g_app = app;
 
