@@ -1,8 +1,10 @@
 # voljack
 
-`voljack` is a minimal, extremely lightweight JACK client that provides a **single shared volume control for any number of JACK audio channels**.
+`voljack` is a minimal and simple JACK client that provides a **single shared volume control for any number of JACK audio channels**.
 
 Each input channel is passed through a shared gain stage and routed directly to its corresponding output:
+
+NOTE: This is a vibe coded work in progress, I know little more than how to write a for loop in C, this is probably trash as far as implementation goes. Improvements welcome.
 
 ```
 inX → gain → outX
@@ -224,19 +226,3 @@ voljack:out2
 voljack:out3
 ```
 
----
-
-# Design Goals
-
-- minimal code
-- predictable behavior
-- realtime-safe audio processing
-- extremely low CPU usage
-- no GUI
-- works well with `qjackctl`, `patchbay`, and other JACK tools
-
----
-
-# License
-
-MIT
